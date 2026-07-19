@@ -1131,24 +1131,46 @@ class WebSocketClient {
   constructor() {
       const url = `ws://localhost:${window.initialData.websocketPort}`;
       console.log('WebSocketClient url', url);
-      this.ws = new WebSocket(url);
-      this.ws.binaryType = 'arraybuffer';
-      
-      this.ws.onopen = () => {
-          console.log('WebSocket Connected');
+
+      // Placeholder socket until the real connection is opened after page load.
+      // Every send*/sendJson method below guards on `this.ws.readyState !== WebSocket.OPEN`,
+      // so this no-op placeholder simply skips any pre-connection sends (there is no media
+      // to send before the bot has joined anyway) — no buffering required.
+      this.ws = { readyState: WebSocket.CONNECTING, binaryType: 'arraybuffer', send() {}, close() {} };
+
+      // Defer the WebSocket connection until AFTER Google Meet finishes bootstrapping.
+      // Opening a ws://localhost socket during Meet's document-start bootstrap causes current
+      // Meet to abort its own page load — the document navigates to `data:,` and renders blank,
+      // so the bot can never find the join UI ("Could not find name input, timed out").
+      // This reproduces on real Google Chrome AND Chromium alike (it is a Meet-side behavior,
+      // not a browser/arch issue). Connecting after the `load` event avoids the collision; the
+      // bot only streams media/events after joining, which is long after load, so this is safe.
+      const connect = () => {
+          try {
+              const sock = new WebSocket(url);
+              sock.binaryType = 'arraybuffer';
+              sock.onopen = () => {
+                  console.log('WebSocket Connected');
+              };
+              sock.onmessage = (event) => {
+                  this.handleMessage(event.data);
+              };
+              sock.onerror = (error) => {
+                  console.error('WebSocket Error:', error);
+              };
+              sock.onclose = () => {
+                  console.log('WebSocket Disconnected');
+              };
+              this.ws = sock;
+          } catch (error) {
+              console.error('WebSocket connection failed:', error);
+          }
       };
-      
-      this.ws.onmessage = (event) => {
-          this.handleMessage(event.data);
-      };
-      
-      this.ws.onerror = (error) => {
-          console.error('WebSocket Error:', error);
-      };
-      
-      this.ws.onclose = () => {
-          console.log('WebSocket Disconnected');
-      };
+      if (document.readyState === 'complete') {
+          setTimeout(connect, 2000);
+      } else {
+          window.addEventListener('load', () => setTimeout(connect, 2000));
+      }
 
       this.mediaSendingEnabled = false;
       
