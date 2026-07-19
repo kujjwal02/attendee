@@ -28,6 +28,11 @@ x-app-env: &app-env
   DJANGO_SSL_REQUIRE: ${DJANGO_SSL_REQUIRE:-true}
   REDIS_URL: redis://redis:6379/0
   DISABLE_EMAIL: ${DISABLE_EMAIL:-true}
+  # --- signup restriction (set in Dokploy env) ---
+  # SIGNUP_ALLOWED_EMAILS: comma-separated allow-list; only these emails may create a
+  # NEW account (email OR Google). Empty = open signup. DISABLE_SIGNUP=true hard-blocks all.
+  SIGNUP_ALLOWED_EMAILS: ${SIGNUP_ALLOWED_EMAILS:-}
+  DISABLE_SIGNUP: ${DISABLE_SIGNUP:-}
   # --- storage: local filesystem = the rclone Google Drive mount ---
   STORAGE_PROTOCOL: filesystem
   RECORDING_STORAGE_ROOT: /recordings

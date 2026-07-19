@@ -59,10 +59,15 @@ AUTHENTICATION_BACKENDS = [
 
 # Django allauth config
 SITE_ID = 1
-if os.getenv("DISABLE_SIGNUP") and os.getenv("DISABLE_SIGNUP") != "false":
-    ACCOUNT_ADAPTER = "accounts.adapters.NoNewUsersAccountAdapter"
-else:
-    ACCOUNT_ADAPTER = "accounts.adapters.StandardAccountAdapter"
+# Signup restriction (both are enforced for email AND Google logins, since allauth
+# gates account vs. social signups through separate adapters):
+#   DISABLE_SIGNUP          - hard off switch (any truthy value except "false")
+#   SIGNUP_ALLOWED_EMAILS   - comma-separated allow-list; if set, only these emails
+#                             may create a NEW account. Existing users are unaffected.
+DISABLE_SIGNUP = bool(os.getenv("DISABLE_SIGNUP") and os.getenv("DISABLE_SIGNUP") != "false")
+SIGNUP_ALLOWED_EMAILS = [e.strip().lower() for e in os.getenv("SIGNUP_ALLOWED_EMAILS", "").split(",") if e.strip()]
+ACCOUNT_ADAPTER = "accounts.adapters.StandardAccountAdapter"
+SOCIALACCOUNT_ADAPTER = "accounts.adapters.RestrictedSocialAccountAdapter"
 ACCOUNT_AUTHENTICATION_METHOD = "email"
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
