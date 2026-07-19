@@ -13,7 +13,10 @@
 # Optional:
 #   POSTGRES_USER  (default attendee)   POSTGRES_DB (default attendee)
 #   RECORDING_MOUNT (default /home/ubuntu/attendee-recordings)  host rclone Drive mount
-#   DJANGO_SSL_REQUIRE (default false)  keep false - Traefik terminates TLS in front
+#   DJANGO_SSL_REQUIRE (default true)   keep true behind Traefik: it sets SECURE_PROXY_SSL_HEADER so
+#                                       Django trusts X-Forwarded-Proto=https. If false, Django sees
+#                                       every request as http -> CSRF "Origin checking failed" on POST
+#                                       (e.g. Google login) and OAuth redirect_uri built as http://.
 
 x-app-env: &app-env
   DJANGO_SETTINGS_MODULE: attendee.settings.production
@@ -22,7 +25,7 @@ x-app-env: &app-env
   ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
   DATABASE_URL: postgres://${POSTGRES_USER:-attendee}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-attendee}
   POSTGRES_SSL_REQUIRE: "false"
-  DJANGO_SSL_REQUIRE: ${DJANGO_SSL_REQUIRE:-false}
+  DJANGO_SSL_REQUIRE: ${DJANGO_SSL_REQUIRE:-true}
   REDIS_URL: redis://redis:6379/0
   DISABLE_EMAIL: ${DISABLE_EMAIL:-true}
   # --- storage: local filesystem = the rclone Google Drive mount ---

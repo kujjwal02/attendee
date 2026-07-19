@@ -104,7 +104,7 @@ Set these in Dokploy's **Environment** UI:
 | `POSTGRES_PASSWORD` | required |
 | `ALLOWED_HOSTS` | your domain, e.g. `attendee.example.com` |
 | `RECORDING_MOUNT` | host path of the rclone Drive mount (default `/home/ubuntu/attendee-recordings`) |
-| `DJANGO_SSL_REQUIRE` | keep `false` - Traefik terminates TLS in front |
+| `DJANGO_SSL_REQUIRE` | keep `true` (default) behind Traefik - it sets `SECURE_PROXY_SSL_HEADER` so Django trusts `X-Forwarded-Proto=https`. Setting it `false` makes Django treat every request as http → CSRF "Origin checking failed" on POST (Google login) and an `http://` OAuth `redirect_uri`. |
 
 Attach the Dokploy domain/Traefik route to the **`web`** service on port `8000`. The `worker`
 service carries the Drive bind-mount (`:rshared`) and `shm_size: 2gb`; make sure the rclone

@@ -9,6 +9,10 @@ from .base import LOG_FORMATTERS
 DEBUG = False
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 
+# Trust our own https origin(s) for CSRF (Django 4+ checks the Origin header on POST). Derived from
+# ALLOWED_HOSTS so form posts / social login from the real domain aren't rejected behind a proxy.
+CSRF_TRUSTED_ORIGINS = [f"https://{h.strip()}" for h in ALLOWED_HOSTS if h.strip() and h.strip() != "*"]
+
 DATABASES = {
     "default": dj_database_url.config(
         env="DATABASE_URL",
