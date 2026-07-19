@@ -1542,14 +1542,23 @@ class RTCInterceptor {
             // Notify about the creation
             onPeerConnectionCreate(peerConnection);
             
-            // Override createDataChannel
+            // Override createDataChannel to catch channels the bot creates LOCALLY.
             const originalCreateDataChannel = peerConnection.createDataChannel.bind(peerConnection);
             peerConnection.createDataChannel = (label, options) => {
                 const dataChannel = originalCreateDataChannel(label, options);
                 onDataChannelCreate(dataChannel, peerConnection);
                 return dataChannel;
             };
-            
+
+            // Also catch REMOTE data channels created by the other peer (Google Meet's server).
+            // Meet delivers its 'captions' channel as a remote channel via the `datachannel`
+            // event — which the createDataChannel override above does NOT see. Without this,
+            // the caption message listener is never attached and closed-caption transcription
+            // silently produces zero utterances (transcription_state stuck at not_started).
+            peerConnection.addEventListener('datachannel', (event) => {
+                onDataChannelCreate(event.channel, peerConnection);
+            });
+
             return peerConnection;
         };
     }
