@@ -71,6 +71,7 @@ from .audio_output_manager import AudioOutputManager
 from .azure_file_uploader import AzureFileUploader
 from .bot_resource_snapshot_taker import BotResourceSnapshotTaker
 from .closed_caption_manager import ClosedCaptionManager
+from .filesystem_file_uploader import FilesystemFileUploader
 from .grouped_closed_caption_manager import GroupedClosedCaptionManager
 from .gstreamer_pipeline import GstreamerPipeline
 from .per_participant_non_streaming_audio_input_manager import PerParticipantNonStreamingAudioInputManager
@@ -619,6 +620,12 @@ class BotController:
             logger.exception(f"Error uploading recording to external media storage bucket {self.bot_in_db.external_media_storage_bucket_name()}: {e}")
 
     def get_file_uploader(self):
+        if settings.STORAGE_PROTOCOL == "filesystem":
+            return FilesystemFileUploader(
+                destination_directory=settings.RECORDING_STORAGE_BACKEND.get("OPTIONS").get("location"),
+                filename=self.get_recording_filename(),
+            )
+
         if settings.STORAGE_PROTOCOL == "azure":
             return AzureFileUploader(
                 container=settings.AZURE_RECORDING_STORAGE_CONTAINER_NAME,
