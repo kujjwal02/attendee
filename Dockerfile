@@ -84,7 +84,7 @@ RUN apt-get update \
  && ln -sf /usr/bin/python3 /usr/bin/python \
  && google-chrome --version \
  && chromedriver --version \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* /usr/share/info/*
 
 ########################################################################################
 # Stage 2: builder - compile the Python deps into a venv, then throw the toolchain away
@@ -130,7 +130,9 @@ RUN uv pip install -r requirements.txt \
  # PyAV must be compiled against the system ffmpeg (which includes libavdevice) so that
  # webpage streaming via PyAV works; the PyPI wheel omits avdevice.
  && uv pip uninstall av \
- && uv pip install --no-binary av "av==12.0.0"
+ && uv pip install --no-binary av "av==12.0.0" \
+ # Cython is only needed to build sdists at this point; drop it from the runtime venv.
+ && uv pip uninstall cython
 
 ########################################################################################
 # Stage 3: final - lean runtime image (base + venv + app code, no toolchain)
