@@ -54,6 +54,10 @@ services:
       redis:
         condition: service_healthy
     networks: [attendee_network]
+    # collectstatic writes here; web reads it (WhiteNoise). Shared so the two containers
+    # actually see the same files - without this, web serves an empty staticfiles dir.
+    volumes:
+      - staticfiles:/attendee/staticfiles
     restart: "no"
 
   web:
@@ -66,6 +70,9 @@ services:
       init:
         condition: service_completed_successfully
     networks: [attendee_network]
+    # Serve the static files collectstatic wrote in the init service (WhiteNoise).
+    volumes:
+      - staticfiles:/attendee/staticfiles
     # Dokploy attaches the domain/Traefik route to this service on port 8000.
     expose: ["8000"]
     restart: unless-stopped
@@ -139,3 +146,4 @@ networks:
 volumes:
   postgres:
   redis:
+  staticfiles:
