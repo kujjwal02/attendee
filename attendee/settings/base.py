@@ -274,6 +274,19 @@ if STORAGE_PROTOCOL == "azure":
 
     AUDIO_CHUNK_STORAGE_BACKEND = copy.deepcopy(DEFAULT_STORAGE_BACKEND)
     AUDIO_CHUNK_STORAGE_BACKEND["OPTIONS"]["azure_container"] = AZURE_AUDIO_CHUNK_STORAGE_CONTAINER_NAME
+elif STORAGE_PROTOCOL == "filesystem":
+    # Self-hosted fork: write recordings to a local directory instead of S3/Azure. That
+    # directory is expected to be an rclone FUSE mount of Google Drive (see SELFHOST.md),
+    # so files land in Drive without any object store. base_url is intentionally left unset
+    # (Attendee's own recording download URL isn't used - the file is retrieved from Drive).
+    RECORDING_STORAGE_ROOT = os.getenv("RECORDING_STORAGE_ROOT", "/recordings")
+    _FS_STORAGE_BACKEND = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": RECORDING_STORAGE_ROOT},
+    }
+    DEFAULT_STORAGE_BACKEND = copy.deepcopy(_FS_STORAGE_BACKEND)
+    RECORDING_STORAGE_BACKEND = copy.deepcopy(_FS_STORAGE_BACKEND)
+    AUDIO_CHUNK_STORAGE_BACKEND = copy.deepcopy(_FS_STORAGE_BACKEND)
 else:
     DEFAULT_STORAGE_BACKEND = {
         "BACKEND": "storages.backends.s3.S3Storage",

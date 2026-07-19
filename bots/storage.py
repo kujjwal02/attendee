@@ -72,9 +72,14 @@ def remote_storage_url(file_field):
     if settings.STORAGE_PROTOCOL == "azure":
         return file_field.url
 
-    # Generate a temporary signed URL that expires in 30 minutes (1800 seconds)
-    return file_field.storage.bucket.meta.client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": file_field.storage.bucket_name, "Key": file_field.name},
-        ExpiresIn=1800,
-    )
+    if settings.STORAGE_PROTOCOL == "s3":
+        # Generate a temporary signed URL that expires in 30 minutes (1800 seconds)
+        return file_field.storage.bucket.meta.client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": file_field.storage.bucket_name, "Key": file_field.name},
+            ExpiresIn=1800,
+        )
+
+    # Any other backend (e.g. filesystem) has no boto3 bucket/client. Only reached when
+    # USE_REMOTE_STORAGE_FOR_AUDIO_CHUNKS is on (kept off in this fork).
+    return file_field.url

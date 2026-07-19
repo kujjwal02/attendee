@@ -2315,12 +2315,20 @@ class Recording(models.Model):
         if settings.STORAGE_PROTOCOL == "azure":
             return self.file.url
 
-        # Generate a temporary signed URL that expires in 30 minutes (1800 seconds)
-        return self.file.storage.bucket.meta.client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self.file.storage.bucket_name, "Key": self.file.name},
-            ExpiresIn=1800,
-        )
+        if settings.STORAGE_PROTOCOL == "s3":
+            # Generate a temporary signed URL that expires in 30 minutes (1800 seconds)
+            return self.file.storage.bucket.meta.client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.file.storage.bucket_name, "Key": self.file.name},
+                ExpiresIn=1800,
+            )
+
+        # Any other backend (e.g. filesystem) has no boto3 bucket/client. Without a
+        # base_url configured, self.file.url raises ValueError -> return None.
+        try:
+            return self.file.url
+        except ValueError:
+            return None
 
     OBJECT_ID_PREFIX = "rec_"
     object_id = models.CharField(max_length=32, unique=True, editable=False)
@@ -3046,12 +3054,20 @@ class BotDebugScreenshot(models.Model):
         if settings.STORAGE_PROTOCOL == "azure":
             return self.file.url
 
-        # Generate a temporary signed URL that expires in 30 minutes (1800 seconds)
-        return self.file.storage.bucket.meta.client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self.file.storage.bucket_name, "Key": self.file.name},
-            ExpiresIn=1800,
-        )
+        if settings.STORAGE_PROTOCOL == "s3":
+            # Generate a temporary signed URL that expires in 30 minutes (1800 seconds)
+            return self.file.storage.bucket.meta.client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.file.storage.bucket_name, "Key": self.file.name},
+                ExpiresIn=1800,
+            )
+
+        # Any other backend (e.g. filesystem) has no boto3 bucket/client. Without a
+        # base_url configured, self.file.url raises ValueError -> return None.
+        try:
+            return self.file.url
+        except ValueError:
+            return None
 
     def __str__(self):
         return f"Debug Screenshot {self.object_id} for event {self.bot_event}"
