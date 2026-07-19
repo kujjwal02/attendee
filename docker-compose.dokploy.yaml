@@ -1,0 +1,141 @@
+# Dokploy deployment for the self-hosted ARM64 + Google Drive fork.
+# See SELFHOST.md for the full setup (Drive mount, OAuth, env vars).
+#
+# Dokploy builds this from the fork's Dockerfile on the Arm VM (native arm64).
+# One image runs three roles: web (gunicorn), worker (celery bots), scheduler.
+#
+# Required env vars (set them in Dokploy's Environment UI):
+#   DJANGO_SECRET_KEY          long random string
+#   CREDENTIALS_ENCRYPTION_KEY Fernet key; generate with:
+#                                python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#   POSTGRES_PASSWORD          database password
+#   ALLOWED_HOSTS              e.g. attendee.example.com
+# Optional:
+#   POSTGRES_USER  (default attendee)   POSTGRES_DB (default attendee)
+#   RECORDING_MOUNT (default /home/ubuntu/attendee-recordings)  host rclone Drive mount
+#   DJANGO_SSL_REQUIRE (default false)  keep false - Traefik terminates TLS in front
+
+x-app-env: &app-env
+  DJANGO_SETTINGS_MODULE: attendee.settings.production
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in Dokploy env}
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?set CREDENTIALS_ENCRYPTION_KEY (a Fernet key)}
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+  DATABASE_URL: postgres://${POSTGRES_USER:-attendee}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-attendee}
+  POSTGRES_SSL_REQUIRE: "false"
+  DJANGO_SSL_REQUIRE: ${DJANGO_SSL_REQUIRE:-false}
+  REDIS_URL: redis://redis:6379/0
+  DISABLE_EMAIL: ${DISABLE_EMAIL:-true}
+  # --- storage: local filesystem = the rclone Google Drive mount ---
+  STORAGE_PROTOCOL: filesystem
+  RECORDING_STORAGE_ROOT: /recordings
+  USE_REMOTE_STORAGE_FOR_AUDIO_CHUNKS: "false"
+  # --- single-VM bot execution ---
+  LAUNCH_BOT_METHOD: celery
+  ENABLE_CHROME_SANDBOX: "false"
+
+# Shared build so the image is built once and reused by all three roles.
+x-app-build: &app-build
+  context: .
+  target: final
+
+services:
+  # One-shot: run DB migrations + collect static, then exit. The app services wait for it.
+  init:
+    build: *app-build
+    image: attendee-selfhost:latest
+    entrypoint: []
+    # NOTE: bash -c (NOT -lc). A login shell re-sources /etc/profile and would drop
+    # /opt/venv/bin from PATH, hiding the app's Python deps.
+    command: bash -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [attendee_network]
+    restart: "no"
+
+  web:
+    build: *app-build
+    image: attendee-selfhost:latest
+    entrypoint: []
+    command: gunicorn attendee.wsgi --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3} --timeout 120
+    environment: *app-env
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    networks: [attendee_network]
+    # Dokploy attaches the domain/Traefik route to this service on port 8000.
+    expose: ["8000"]
+    restart: unless-stopped
+
+  worker:
+    build: *app-build
+    image: attendee-selfhost:latest
+    # NOTE: no entrypoint override - the worker runs the meeting bots and needs the
+    # PulseAudio setup done by entrypoint.sh.
+    command: celery -A attendee worker -l INFO
+    environment: *app-env
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    networks: [attendee_network]
+    # Chromium needs a large /dev/shm.
+    shm_size: "2gb"
+    volumes:
+      # The host rclone FUSE mount of Google Drive, bind-mounted with SHARED propagation so
+      # the container sees files rclone writes after start. Requires `--allow-other` on the
+      # rclone mount and possibly `mount --make-rshared <path>` on the host. See SELFHOST.md.
+      - ${RECORDING_MOUNT:-/home/ubuntu/attendee-recordings}:/recordings:rshared
+    restart: unless-stopped
+
+  scheduler:
+    build: *app-build
+    image: attendee-selfhost:latest
+    entrypoint: []
+    command: python manage.py run_scheduler
+    environment: *app-env
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    networks: [attendee_network]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-attendee}
+      POSTGRES_USER: ${POSTGRES_USER:-attendee}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [attendee_network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-attendee} -d ${POSTGRES_DB:-attendee}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --appendonly no
+    volumes:
+      - redis:/data
+    networks: [attendee_network]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  attendee_network:
+    driver: bridge
+
+volumes:
+  postgres:
+  redis:
