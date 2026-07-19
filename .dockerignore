@@ -3,6 +3,10 @@
 venv
 env.sh
 
+# Not needed in the image (keeps it smaller)
+.git
+.github
+
 ### OSX ###
 .DS_Store
 .AppleDouble
