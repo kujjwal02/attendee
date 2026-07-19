@@ -71,7 +71,8 @@ websocket-client==1.8.0
 websockets==14.1
 whitenoise==6.8.2
 wsproto==1.2.0
-zoom-meeting-sdk==0.0.27
+# zoom-meeting-sdk removed in this fork: ships only x86_64 wheels (no arm64), which would
+# block the Arm build, and native Zoom is not supported here (see SELFHOST.md).
 cachetools==5.5.1
 google-api-core==2.24.1
 google-auth==2.38.0

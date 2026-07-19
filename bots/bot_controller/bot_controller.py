@@ -533,12 +533,11 @@ class BotController:
     def get_bot_adapter(self):
         meeting_type = self.get_meeting_type()
         if meeting_type == MeetingTypes.ZOOM:
-            if self.is_using_rtms():
-                return self.get_zoom_rtms_adapter()
-            elif self.bot_in_db.use_zoom_web_adapter():
-                return self.get_zoom_web_bot_adapter()
-            else:
-                return self.get_zoom_bot_adapter()
+            # Zoom is not supported in this self-hosted Arm fork. The native Zoom SDK
+            # (zoom-meeting-sdk) is x86_64-only and has been removed from requirements, so
+            # importing the Zoom adapters here would fail. Raise a clear error instead of
+            # a confusing ImportError. See SELFHOST.md.
+            raise NotImplementedError("Zoom is not supported in this fork; only Google Meet and Teams are available.")
         elif meeting_type == MeetingTypes.GOOGLE_MEET:
             return self.get_google_meet_bot_adapter()
         elif meeting_type == MeetingTypes.TEAMS:
