@@ -332,6 +332,19 @@ VAULT_NOTE_DIR = os.getenv("VAULT_NOTE_DIR", "/vault")
 # (e.g. https://attendee.ujjwalk.dev). Empty = omit the dashboard link.
 VAULT_NOTE_BASE_URL = os.getenv("VAULT_NOTE_BASE_URL", "").rstrip("/")
 
+# --- Auto-dispatch (self-hosted fork) --------------------------------------
+# Book bots for synced calendar events matching a policy. run_scheduler calls
+# run_auto_dispatch() each cycle. These are the GLOBAL defaults; a per-calendar
+# override may live in Calendar.metadata["auto_dispatch"] = {enabled, policy, keyword}.
+AUTO_DISPATCH_ENABLED = os.getenv("AUTO_DISPATCH_ENABLED", "false") == "true"
+# participant (default) | organizer | accepted | keyword | all
+AUTO_DISPATCH_POLICY = os.getenv("AUTO_DISPATCH_POLICY", "participant")
+AUTO_DISPATCH_KEYWORD = os.getenv("AUTO_DISPATCH_KEYWORD", "")
+# Only book events starting within this many hours (avoids booking far-future events
+# that may still move/cancel; they get booked once they enter the horizon).
+AUTO_DISPATCH_HORIZON_HOURS = int(os.getenv("AUTO_DISPATCH_HORIZON_HOURS", "48"))
+AUTO_DISPATCH_BOT_NAME = os.getenv("AUTO_DISPATCH_BOT_NAME", "Notetaker")
+
 CHARGE_CREDITS_FOR_BOTS = os.getenv("CHARGE_CREDITS_FOR_BOTS", "false") == "true"
 
 BOT_POD_NAMESPACE = os.getenv("BOT_POD_NAMESPACE", "attendee")

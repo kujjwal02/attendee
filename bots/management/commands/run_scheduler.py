@@ -100,6 +100,7 @@ class Command(BaseCommand):
                 self._log_celery_queue_sizes()
                 self._run_scheduled_bots()
                 self._run_periodic_calendar_syncs()
+                self._run_auto_dispatch_bookings()
                 self._run_periodic_zoom_oauth_connection_syncs()
                 self._run_periodic_zoom_oauth_connection_token_refreshs()
                 self._run_autopay_tasks()
@@ -129,6 +130,19 @@ class Command(BaseCommand):
                 log.warning(f"Scheduler cycle took {elapsed}s, which is longer than the interval of {interval}s")
 
         log.info("Scheduler daemon exited")
+
+    def _run_auto_dispatch_bookings(self):
+        """Self-hosted fork: book bots for calendar events matching the auto-dispatch policy.
+
+        No-op unless auto-dispatch is enabled globally (AUTO_DISPATCH_ENABLED) or for some
+        calendar (Calendar.metadata['auto_dispatch']). Best-effort; per-calendar failures are
+        logged inside run_auto_dispatch and never abort the scheduler cycle.
+        """
+        from bots.auto_dispatch import run_auto_dispatch
+
+        booked = run_auto_dispatch()
+        if booked:
+            log.info("Auto-dispatch booked %d bot(s) from calendar events", booked)
 
     def _run_periodic_calendar_syncs(self):
         """
