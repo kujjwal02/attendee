@@ -607,6 +607,12 @@ class WebBotAdapter(BotAdapter):
         options.add_argument("--disable-application-cache")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        # The injected payload opens a ws://127.0.0.1 control socket back to the Python bot process.
+        # Recent Chrome enforces "Local Network Access" checks that block ANY page (even about:blank)
+        # from connecting to loopback/local addresses, aborting the WebSocket with
+        # net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS before the handshake is sent — so no
+        # browser->Python messages (captions, participants, audio) ever flow. Disable that check.
+        options.add_argument("--disable-features=LocalNetworkAccessChecks")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
         if os.getenv("ENABLE_CHROME_SANDBOX", "false").lower() != "true":

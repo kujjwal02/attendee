@@ -1129,7 +1129,11 @@ class WebSocketClient {
   };
 
   constructor() {
-      const url = `ws://localhost:${window.initialData.websocketPort}`;
+      // Use 127.0.0.1 (not "localhost"): inside the bot container "localhost" resolves to ::1
+      // (IPv6) first, but the Python websocket server binds only 127.0.0.1 (IPv4), so a
+      // ws://localhost connection hits IPv6 and is refused — no browser→Python message
+      // (captions, participant updates, audio) ever reaches the server. Forcing IPv4 fixes this.
+      const url = `ws://127.0.0.1:${window.initialData.websocketPort}`;
       console.log('WebSocketClient url', url);
 
       // Placeholder socket until the real connection is opened after page load.
@@ -2127,7 +2131,7 @@ new RTCInterceptor({
         console.log('New RTCPeerConnection created:', peerConnection);
         peerConnection.addEventListener('datachannel', (event) => {
             console.log('datachannel', event);
-            if (event.channel.label === "collections") {               
+            if (event.channel.label === "collections") {
                 event.channel.addEventListener("message", (messageEvent) => {
                     console.log('RAWcollectionsevent', messageEvent);
                     handleCollectionEvent(messageEvent);
