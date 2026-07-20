@@ -8,7 +8,7 @@ from django.test import Client, TransactionTestCase
 from django.urls import reverse
 
 from accounts.models import Organization, User, UserRole
-from bots.models import Calendar, CalendarPlatform, Project
+from bots.models import Calendar, CalendarPlatform, CalendarStates, Project
 
 
 class CalendarConnectGoogleTest(TransactionTestCase):
@@ -47,16 +47,20 @@ class CalendarConnectGoogleTest(TransactionTestCase):
         resp = self.client.get(reverse("bots:calendar-connect-google-callback") + "?state=nope&code=abc")
         self.assertEqual(resp.status_code, 302)
 
-    def test_callback_creates_calendar_with_policy_metadata(self):
-        # Prime the session as the connect view would
-        start = self.client.get(reverse("bots:calendar-connect-google", args=[self.project.object_id]) + "?policy=participant")
-        state = self.client.session["gcal_oauth"]["state"]
+    CAL_SCOPE = "openid email https://www.googleapis.com/auth/calendar.readonly"
 
-        with patch("bots.calendar_oauth.exchange_code_for_tokens", return_value={"refresh_token": "rt-123", "access_token": "at-123"}), \
+    def _run_callback(self, policy="participant", token=None):
+        self.client.get(reverse("bots:calendar-connect-google", args=[self.project.object_id]) + f"?policy={policy}")
+        state = self.client.session["gcal_oauth"]["state"]
+        token = token if token is not None else {"refresh_token": "rt-123", "access_token": "at-123", "scope": self.CAL_SCOPE}
+        with patch("bots.calendar_oauth.exchange_code_for_tokens", return_value=token), \
              patch("bots.calendar_oauth.account_email", return_value="me@work.com"), \
              patch("bots.tasks.sync_calendar_task.enqueue_sync_calendar_task") as enq:
             resp = self.client.get(reverse("bots:calendar-connect-google-callback") + f"?state={state}&code=authcode")
+        return resp, enq
 
+    def test_callback_creates_calendar_with_policy_metadata(self):
+        resp, enq = self._run_callback(policy="participant")
         self.assertRedirects(resp, reverse("bots:project-calendars", args=[self.project.object_id]), fetch_redirect_response=False)
         cal = Calendar.objects.get(project=self.project)
         self.assertEqual(cal.platform, CalendarPlatform.GOOGLE)
@@ -68,10 +72,32 @@ class CalendarConnectGoogleTest(TransactionTestCase):
         self.assertEqual(creds["client_secret"], "sekret")
         enq.assert_called_once()
 
+    def test_callback_missing_calendar_scope_errors(self):
+        # User didn't tick the calendar checkbox -> only base scopes granted.
+        resp, enq = self._run_callback(token={"refresh_token": "rt-123", "access_token": "at-123", "scope": "openid email"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(Calendar.objects.filter(project=self.project).exists())
+        enq.assert_not_called()
+
+    def test_callback_reconnect_upserts_and_heals(self):
+        # First connect
+        self._run_callback(policy="participant")
+        cal = Calendar.objects.get(project=self.project)
+        # Simulate it having gone Disconnected
+        cal.state = CalendarStates.DISCONNECTED
+        cal.connection_failure_data = {"error": "boom"}
+        cal.save()
+        # Reconnect same account with a new refresh token + different policy
+        resp, enq = self._run_callback(policy="organizer", token={"refresh_token": "rt-456", "access_token": "at-456", "scope": self.CAL_SCOPE})
+        self.assertEqual(Calendar.objects.filter(project=self.project).count(), 1)  # upsert, not duplicate
+        cal.refresh_from_db()
+        self.assertEqual(cal.state, CalendarStates.CONNECTED)
+        self.assertIsNone(cal.connection_failure_data)
+        self.assertEqual(cal.metadata["auto_dispatch"]["policy"], "organizer")
+        self.assertEqual(cal.get_credentials()["refresh_token"], "rt-456")
+        enq.assert_called_once()
+
     def test_callback_no_refresh_token_errors(self):
-        self.client.get(reverse("bots:calendar-connect-google", args=[self.project.object_id]))
-        state = self.client.session["gcal_oauth"]["state"]
-        with patch("bots.calendar_oauth.exchange_code_for_tokens", return_value={"access_token": "at-123"}):
-            resp = self.client.get(reverse("bots:calendar-connect-google-callback") + f"?state={state}&code=authcode")
+        resp, enq = self._run_callback(token={"access_token": "at-123", "scope": self.CAL_SCOPE})
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(Calendar.objects.filter(project=self.project).exists())

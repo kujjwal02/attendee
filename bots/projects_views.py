@@ -934,36 +934,54 @@ class CalendarConnectGoogleCallbackView(LoginRequiredMixin, View):
             messages.error(request, "Calendar connection failed while exchanging the Google authorization code.")
             return redirect("bots:project-calendars", object_id=object_id)
 
+        # The consent screen shows the calendar permission as a checkbox — if it isn't ticked,
+        # Google still returns a token, but without the calendar scope, and every sync would 403.
+        # Catch that here so we surface a clear message instead of creating a Disconnected calendar.
+        granted_scope = token.get("scope", "")
+        if "calendar.readonly" not in granted_scope and "auth/calendar" not in granted_scope:
+            messages.error(request, "Calendar access wasn't granted. Reconnect and make sure to check the box for \"See the events on all your calendars\" on the Google consent screen.")
+            return redirect("bots:project-calendars", object_id=object_id)
+
         refresh_token = token.get("refresh_token")
         if not refresh_token:
             messages.error(request, "Google didn't return a refresh token. Remove Attendee's access at myaccount.google.com/permissions and reconnect.")
             return redirect("bots:project-calendars", object_id=object_id)
 
         email = account_email(token.get("access_token")) or "google"
-
-        # Create the calendar via the shared helper (encrypts client_secret + refresh_token).
-        # Metadata is set AFTER creation to bypass REQUIRE_STRING_VALUES_IN_METADATA (the
-        # auto_dispatch config is a nested object, not a flat string map).
-        calendar, err = create_calendar(
-            data={
-                "platform": "google",
-                "client_id": app.client_id,
-                "client_secret": app.secret,
-                "refresh_token": refresh_token,
-                "deduplication_key": f"google:{email}",
-            },
-            project=project,
-        )
-        if err:
-            msg = err.get("error") if isinstance(err, dict) else str(err)
-            messages.warning(request, f"Couldn't connect the calendar: {msg}")
-            return redirect("bots:project-calendars", object_id=object_id)
-
+        dedup_key = f"google:{email}"
         auto_dispatch = {"enabled": True, "policy": sess["policy"]}
         if sess["policy"] == "keyword":
             auto_dispatch["keyword"] = sess.get("keyword", "")
-        calendar.metadata = {"auto_dispatch": auto_dispatch}
-        calendar.save()
+
+        # Upsert by dedup key so reconnecting the same account re-authorizes and self-heals a
+        # previously Disconnected calendar (instead of failing on the unique dedup constraint).
+        existing = Calendar.objects.filter(project=project, deduplication_key=dedup_key).first()
+        if existing:
+            existing.client_id = app.client_id
+            existing.state = CalendarStates.CONNECTED
+            existing.connection_failure_data = None
+            existing.metadata = {"auto_dispatch": auto_dispatch}
+            existing.set_credentials({"client_secret": app.secret, "refresh_token": refresh_token})  # calls save()
+            calendar = existing
+        else:
+            # create_calendar encrypts client_secret + refresh_token. Metadata is set AFTER
+            # creation to bypass REQUIRE_STRING_VALUES_IN_METADATA (auto_dispatch is nested).
+            calendar, err = create_calendar(
+                data={
+                    "platform": "google",
+                    "client_id": app.client_id,
+                    "client_secret": app.secret,
+                    "refresh_token": refresh_token,
+                    "deduplication_key": dedup_key,
+                },
+                project=project,
+            )
+            if err:
+                msg = err.get("error") if isinstance(err, dict) else str(err)
+                messages.warning(request, f"Couldn't connect the calendar: {msg}")
+                return redirect("bots:project-calendars", object_id=object_id)
+            calendar.metadata = {"auto_dispatch": auto_dispatch}
+            calendar.save()
 
         enqueue_sync_calendar_task(calendar)
         messages.success(request, f"Connected Google Calendar ({email}). Syncing now — matching upcoming meetings will get a bot automatically (policy: {sess['policy']}).")
