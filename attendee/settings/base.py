@@ -322,6 +322,16 @@ AWS_S3_SIGNATURE_VERSION = "s3v4"
 if os.getenv("USE_IRSA_FOR_S3_STORAGE", "false") == "true":
     AWS_S3_ADDRESSING_STYLE = "virtual"
 
+# --- Vault-writer (self-hosted fork) ---------------------------------------
+# When a recording's transcription completes, render a Markdown transcript note
+# into VAULT_NOTE_DIR (a bind mount of the ~/knowledge vault). gitwatch + Syncthing
+# then propagate it to every device. Best-effort: failures never affect transcription.
+VAULT_NOTE_ENABLED = os.getenv("VAULT_NOTE_ENABLED", "false") == "true"
+VAULT_NOTE_DIR = os.getenv("VAULT_NOTE_DIR", "/vault")
+# Base URL of this Attendee instance, used to link the recording from the note
+# (e.g. https://attendee.ujjwalk.dev). Empty = omit the dashboard link.
+VAULT_NOTE_BASE_URL = os.getenv("VAULT_NOTE_BASE_URL", "").rstrip("/")
+
 CHARGE_CREDITS_FOR_BOTS = os.getenv("CHARGE_CREDITS_FOR_BOTS", "false") == "true"
 
 BOT_POD_NAMESPACE = os.getenv("BOT_POD_NAMESPACE", "attendee")

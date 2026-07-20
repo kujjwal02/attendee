@@ -2477,6 +2477,21 @@ class RecordingManager:
         recording.transcription_state = RecordingTranscriptionStates.COMPLETE
         recording.save()
 
+        # Self-hosted fork: once the transcript is final, write a Markdown note into the
+        # ~/knowledge vault. Best-effort and gated by VAULT_NOTE_ENABLED; enqueued after
+        # commit so the worker reads the committed COMPLETE state. Never break the state
+        # transition if the vault-writer is misconfigured.
+        if getattr(settings, "VAULT_NOTE_ENABLED", False):
+            try:
+                from django.db import transaction
+
+                from bots.tasks.write_meeting_note_task import write_meeting_note_task
+
+                recording_id = recording.id
+                transaction.on_commit(lambda: write_meeting_note_task.delay(recording_id))
+            except Exception:
+                logger.exception(f"Failed to enqueue vault note for recording {recording.id}")
+
     @classmethod
     def set_recording_transcription_failed(cls, recording: Recording, failure_data: dict):
         recording.refresh_from_db()

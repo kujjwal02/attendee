@@ -12,6 +12,7 @@ from .send_slack_alert_task import send_slack_alert
 from .sync_calendar_task import sync_calendar
 from .sync_zoom_oauth_connection_task import sync_zoom_oauth_connection
 from .validate_zoom_oauth_connections_task import validate_zoom_oauth_connections
+from .write_meeting_note_task import write_meeting_note_task
 
 # Expose the tasks and any necessary utilities at the module level
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "validate_zoom_oauth_connections",
     "send_slack_alert",
     "run_bot_in_ephemeral_container",
+    "write_meeting_note_task",
 ]

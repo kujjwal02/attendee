@@ -100,3 +100,8 @@ db.sqlite3
 custom/
 docker-compose.yaml
 .idea/
+
+# Local self-hosted dev (not for the repo)
+docker-compose.override.yaml
+local-recordings/
+local-vault/

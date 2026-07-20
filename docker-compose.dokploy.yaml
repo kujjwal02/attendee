@@ -37,6 +37,12 @@ x-app-env: &app-env
   STORAGE_PROTOCOL: filesystem
   RECORDING_STORAGE_ROOT: /recordings
   USE_REMOTE_STORAGE_FOR_AUDIO_CHUNKS: "false"
+  # --- vault-writer: on transcription-complete, write a Markdown transcript note into
+  # the ~/knowledge vault (bind-mounted at /vault on the worker). gitwatch + Syncthing
+  # then propagate it to every device. Off by default; enable in Dokploy env. ---
+  VAULT_NOTE_ENABLED: ${VAULT_NOTE_ENABLED:-false}
+  VAULT_NOTE_DIR: /vault
+  VAULT_NOTE_BASE_URL: ${VAULT_NOTE_BASE_URL:-}
   # --- single-VM bot execution ---
   LAUNCH_BOT_METHOD: celery
   ENABLE_CHROME_SANDBOX: "false"
@@ -107,6 +113,11 @@ services:
       # the container sees files rclone writes after start. Requires `--allow-other` on the
       # rclone mount and possibly `mount --make-rshared <path>` on the host. See SELFHOST.md.
       - ${RECORDING_MOUNT:-/home/ubuntu/attendee-recordings}:/recordings:rshared
+      # The ~/knowledge vault's meetings folder. The worker writes transcript notes here
+      # (VAULT_NOTE_ENABLED); gitwatch + Syncthing on the hub propagate them. The folder
+      # must already exist (it's a Syncthing-managed vault dir), so Docker binds it rather
+      # than creating a root-owned empty dir.
+      - ${VAULT_MOUNT:-/home/ubuntu/knowledge/areas/meetings}:/vault
     restart: unless-stopped
 
   scheduler:
