@@ -331,6 +331,11 @@ VAULT_NOTE_DIR = os.getenv("VAULT_NOTE_DIR", "/vault")
 # Base URL of this Attendee instance, used to link the recording from the note
 # (e.g. https://attendee.ujjwalk.dev). Empty = omit the dashboard link.
 VAULT_NOTE_BASE_URL = os.getenv("VAULT_NOTE_BASE_URL", "").rstrip("/")
+# The recording .mp4 lives in the rclone-mounted Google Drive folder under its
+# storage filename. We can't resolve the Drive file id without an API call, so we
+# link to a Drive search for the exact (unique) filename, which lands on the file.
+# Override to point at a specific Drive account/folder search if desired.
+VAULT_NOTE_DRIVE_SEARCH_URL = os.getenv("VAULT_NOTE_DRIVE_SEARCH_URL", "https://drive.google.com/drive/search?q=")
 
 # --- Auto-dispatch (self-hosted fork) --------------------------------------
 # Book bots for synced calendar events matching a policy. run_scheduler calls

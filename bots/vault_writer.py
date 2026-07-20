@@ -74,8 +74,11 @@ def render_transcript_body(utterances) -> str:
     return "\n\n".join(lines) if lines else "_(no transcript captured)_"
 
 
-def render_meeting_note(*, title, created_iso, updated_iso, meeting_url, participants, dashboard_url, bot_object_id, utterances) -> str:
-    """Return the full Markdown note (frontmatter + header block + transcript)."""
+def render_meeting_note(*, title, created_iso, updated_iso, meeting_url, attendees, dashboard_url, drive_url, bot_object_id, utterances) -> str:
+    """Return the full Markdown note (frontmatter + header block + attendees + transcript).
+
+    `attendees` is a list of display strings ("Alice Smith" or "bob@example.com").
+    """
     fm_title = _yaml_quote(f"Meeting — {title}")
     front = [
         "---",
@@ -90,21 +93,26 @@ def render_meeting_note(*, title, created_iso, updated_iso, meeting_url, partici
         front.append(f"meeting_url: {_yaml_quote(meeting_url)}")
     front.append("---")
 
-    people = ", ".join(participants) if participants else "—"
     header = [
         f"# Meeting — {title}",
         "",
         f"- **When:** {created_iso}",
-        f"- **Participants:** {people}",
     ]
     if meeting_url:
         header.append(f"- **Meeting URL:** {meeting_url}")
+    if drive_url:
+        header.append(f"- **Video:** [open in Google Drive]({drive_url})")
     if dashboard_url:
         header.append(f"- **Recording:** [open in Attendee]({dashboard_url})")
 
+    if attendees:
+        attendee_block = "\n".join(f"- {a}" for a in attendees)
+    else:
+        attendee_block = "_(none captured)_"
+
     body = render_transcript_body(utterances)
 
-    return "\n".join(front) + "\n\n" + "\n".join(header) + "\n\n## Transcript\n\n" + body + "\n"
+    return "\n".join(front) + "\n\n" + "\n".join(header) + "\n\n## Attendees\n\n" + attendee_block + "\n\n## Transcript\n\n" + body + "\n"
 
 
 def write_meeting_note(recording_id: int) -> str | None:
@@ -115,15 +123,17 @@ def write_meeting_note(recording_id: int) -> str | None:
     directly.
     """
     import os
+    from urllib.parse import quote
 
     from bots.models import Participant, Recording, Utterance
 
     if not settings.VAULT_NOTE_ENABLED:
         return None
 
-    recording = Recording.objects.select_related("bot", "bot__project").get(id=recording_id)
+    recording = Recording.objects.select_related("bot", "bot__project", "bot__calendar_event").get(id=recording_id)
     bot = recording.bot
     project = bot.project
+    calendar_event = bot.calendar_event
 
     utterance_qs = Utterance.objects.filter(recording=recording, async_transcription__isnull=True).exclude(transcription__isnull=True).select_related("participant").order_by("timestamp_ms")
 
@@ -151,28 +161,67 @@ def write_meeting_note(recording_id: int) -> str | None:
         for u in utterance_qs
     ]
 
-    participants = list(
+    # Attendees: union of who the bot actually saw in the meeting (Participant rows)
+    # and who was invited on the calendar event, deduped, preferring display names.
+    observed = list(
         Participant.objects.filter(bot=bot, is_the_bot=False).exclude(full_name__isnull=True).exclude(full_name="").order_by("created_at").values_list("full_name", flat=True).distinct()
     )
+    attendees = []
+    seen = set()
+    for name in observed:
+        key = name.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            attendees.append(name.strip())
+    if calendar_event and calendar_event.attendees:
+        for a in calendar_event.attendees:
+            name = (a.get("name") or "").strip()
+            email = (a.get("email") or "").strip()
+            display = name or email
+            if not display:
+                continue
+            # Dedup against observed names by name and by email.
+            for key in filter(None, [name.lower(), email.lower()]):
+                if key in seen:
+                    break
+            else:
+                seen.add(name.lower())
+                seen.add(email.lower())
+                attendees.append(f"{name} ({email})" if name and email else display)
 
-    # Meeting title: prefer the bot's name if it's meaningful, else the date.
+    # Meeting title: prefer the calendar event's title, then a meaningful bot name,
+    # else the date. (The auto-booked bot name — e.g. "Ujjwal's Notetaker" — is generic.)
     created_dt = bot.created_at
     created_iso = created_dt.strftime("%Y-%m-%d %H:%M")
     bot_name = (bot.name or "").strip()
-    generic = {"", "attendee", "bot", "meeting bot"}
-    title = bot_name if bot_name.lower() not in generic else created_dt.strftime("%Y-%m-%d %H:%M")
+    generic = {"", "attendee", "bot", "meeting bot", "notetaker", "ujjwal's notetaker"}
+    event_title = (getattr(calendar_event, "name", None) or "").strip()
+    if event_title:
+        title = event_title
+    elif bot_name.lower() not in generic:
+        title = bot_name
+    else:
+        title = created_dt.strftime("%Y-%m-%d %H:%M")
 
     dashboard_url = ""
     if settings.VAULT_NOTE_BASE_URL:
         dashboard_url = f"{settings.VAULT_NOTE_BASE_URL}/projects/{project.object_id}/bots/{bot.object_id}"
+
+    # Link to the recording video in Google Drive (the rclone mount stores it under its
+    # storage filename). We link to a Drive search for the unique filename.
+    drive_url = ""
+    if recording.file and recording.file.name:
+        video_filename = os.path.basename(recording.file.name)
+        drive_url = f"{settings.VAULT_NOTE_DRIVE_SEARCH_URL}{quote(video_filename)}"
 
     content = render_meeting_note(
         title=title,
         created_iso=created_iso,
         updated_iso=created_dt.strftime("%Y-%m-%d"),
         meeting_url=bot.meeting_url,
-        participants=participants,
+        attendees=attendees,
         dashboard_url=dashboard_url,
+        drive_url=drive_url,
         bot_object_id=bot.object_id,
         utterances=utterances,
     )

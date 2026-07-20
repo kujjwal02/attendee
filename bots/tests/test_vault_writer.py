@@ -39,8 +39,9 @@ class VaultWriterRenderTest(TestCase):
             created_iso="2026-07-20 14:30",
             updated_iso="2026-07-20",
             meeting_url="https://meet.google.com/abc-defg-hij",
-            participants=["Alice", "Bob"],
+            attendees=["Alice", "Bob (bob@example.com)"],
             dashboard_url="https://attendee.ujjwalk.dev/projects/p/bots/b",
+            drive_url="https://drive.google.com/drive/search?q=bot_xyz-rec_1.mp4",
             bot_object_id="bot_xyz",
             utterances=[{"speaker": "Alice", "timestamp_ms": 0, "text": "Hi"}],
         )
@@ -48,7 +49,10 @@ class VaultWriterRenderTest(TestCase):
         self.assertIn('title: "Meeting — Sync: Q3 Plan"', note)
         self.assertIn("tags: [area/meetings, topic/transcript, status/active]", note)
         self.assertIn("bot: bot_xyz", note)
-        self.assertIn("- **Participants:** Alice, Bob", note)
+        self.assertIn("## Attendees", note)
+        self.assertIn("- Alice", note)
+        self.assertIn("- Bob (bob@example.com)", note)
+        self.assertIn("[open in Google Drive](https://drive.google.com/drive/search?q=bot_xyz-rec_1.mp4)", note)
         self.assertIn("[open in Attendee](https://attendee.ujjwalk.dev/projects/p/bots/b)", note)
         self.assertIn("## Transcript", note)
         self.assertIn("**[0:00] Alice:** Hi", note)
@@ -59,12 +63,14 @@ class VaultWriterRenderTest(TestCase):
             created_iso="2026-07-20 14:30",
             updated_iso="2026-07-20",
             meeting_url="",
-            participants=[],
+            attendees=[],
             dashboard_url="",
+            drive_url="",
             bot_object_id="bot_abc",
             utterances=[],
         )
         self.assertNotIn("meeting_url:", note)
         self.assertNotIn("Recording:", note)
-        self.assertIn("- **Participants:** —", note)
+        self.assertNotIn("Video:", note)
+        self.assertIn("## Attendees\n\n_(none captured)_", note)
         self.assertIn("_(no transcript captured)_", note)
