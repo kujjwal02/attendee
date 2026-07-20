@@ -3,11 +3,13 @@ import json
 import logging
 import os
 import re
+import secrets
 import uuid
 
 import stripe
 from allauth.account.utils import send_email_confirmation
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models, transaction
@@ -857,6 +859,115 @@ class ProjectCalendarEventDetailView(LoginRequiredMixin, ProjectUrlContextMixin,
         )
 
         return render(request, "projects/project_calendar_event_detail.html", context)
+
+
+# --- In-app Google Calendar OAuth connect (self-hosted fork) ----------------
+# Two views: one starts the consent flow, one handles Google's redirect back.
+# The callback is a FIXED route (Google requires an exact redirect_uri), so the
+# project + chosen policy ride along in the session under a random `state` token.
+
+VALID_CONNECT_POLICIES = {"participant", "organizer", "accepted", "keyword", "all"}
+
+
+class ProjectCalendarConnectGoogleView(LoginRequiredMixin, View):
+    """Start the Google Calendar OAuth consent flow for this project."""
+
+    def get(self, request, object_id):
+        from bots.calendar_oauth import build_authorize_url, google_oauth_app
+
+        # Authorization check (raises PermissionDenied if not allowed).
+        get_project_for_user(user=request.user, project_object_id=object_id)
+
+        app = google_oauth_app()
+        if not app:
+            messages.error(request, "Google sign-in isn't configured on this server, so calendars can't be connected.")
+            return redirect("bots:project-calendars", object_id=object_id)
+
+        policy = request.GET.get("policy", "participant")
+        if policy not in VALID_CONNECT_POLICIES:
+            policy = "participant"
+
+        state = secrets.token_urlsafe(24)
+        request.session["gcal_oauth"] = {
+            "state": state,
+            "project_object_id": object_id,
+            "policy": policy,
+            "keyword": request.GET.get("keyword", ""),
+        }
+
+        redirect_uri = request.build_absolute_uri(reverse("bots:calendar-connect-google-callback"))
+        return redirect(build_authorize_url(app.client_id, redirect_uri, state))
+
+
+class CalendarConnectGoogleCallbackView(LoginRequiredMixin, View):
+    """Google redirects the user's browser here after consent. Fixed route (no object_id)."""
+
+    def get(self, request):
+        from bots.calendar_oauth import account_email, exchange_code_for_tokens, google_oauth_app
+        from bots.calendars_api_utils import create_calendar
+        from bots.tasks.sync_calendar_task import enqueue_sync_calendar_task
+
+        sess = request.session.pop("gcal_oauth", None)
+        state = request.GET.get("state")
+        if not sess or not state or state != sess.get("state"):
+            # Tampered/expired round-trip — we may not even know the project.
+            messages.error(request, "Calendar connection expired or was invalid. Please try again.")
+            object_id = (sess or {}).get("project_object_id")
+            return redirect("bots:project-calendars", object_id=object_id) if object_id else redirect("/")
+
+        object_id = sess["project_object_id"]
+        # Re-check access on the way back in.
+        project = get_project_for_user(user=request.user, project_object_id=object_id)
+
+        error = request.GET.get("error")
+        code = request.GET.get("code")
+        if error or not code:
+            messages.error(request, f"Calendar connection was cancelled or failed ({error or 'no authorization code'}).")
+            return redirect("bots:project-calendars", object_id=object_id)
+
+        app = google_oauth_app()
+        redirect_uri = request.build_absolute_uri(reverse("bots:calendar-connect-google-callback"))
+        try:
+            token = exchange_code_for_tokens(code, redirect_uri, app.client_id, app.secret)
+        except Exception:
+            logger.exception("Google Calendar token exchange failed")
+            messages.error(request, "Calendar connection failed while exchanging the Google authorization code.")
+            return redirect("bots:project-calendars", object_id=object_id)
+
+        refresh_token = token.get("refresh_token")
+        if not refresh_token:
+            messages.error(request, "Google didn't return a refresh token. Remove Attendee's access at myaccount.google.com/permissions and reconnect.")
+            return redirect("bots:project-calendars", object_id=object_id)
+
+        email = account_email(token.get("access_token")) or "google"
+
+        # Create the calendar via the shared helper (encrypts client_secret + refresh_token).
+        # Metadata is set AFTER creation to bypass REQUIRE_STRING_VALUES_IN_METADATA (the
+        # auto_dispatch config is a nested object, not a flat string map).
+        calendar, err = create_calendar(
+            data={
+                "platform": "google",
+                "client_id": app.client_id,
+                "client_secret": app.secret,
+                "refresh_token": refresh_token,
+                "deduplication_key": f"google:{email}",
+            },
+            project=project,
+        )
+        if err:
+            msg = err.get("error") if isinstance(err, dict) else str(err)
+            messages.warning(request, f"Couldn't connect the calendar: {msg}")
+            return redirect("bots:project-calendars", object_id=object_id)
+
+        auto_dispatch = {"enabled": True, "policy": sess["policy"]}
+        if sess["policy"] == "keyword":
+            auto_dispatch["keyword"] = sess.get("keyword", "")
+        calendar.metadata = {"auto_dispatch": auto_dispatch}
+        calendar.save()
+
+        enqueue_sync_calendar_task(calendar)
+        messages.success(request, f"Connected Google Calendar ({email}). Syncing now — matching upcoming meetings will get a bot automatically (policy: {sess['policy']}).")
+        return redirect("bots:project-calendars", object_id=object_id)
 
 
 class ProjectBotDetailView(LoginRequiredMixin, ProjectUrlContextMixin, View):

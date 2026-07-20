@@ -176,6 +176,18 @@ urlpatterns = [
         projects_views.ProjectCalendarsView.as_view(),
         name="project-calendars",
     ),
+    # In-app Google Calendar OAuth connect (self-hosted fork). The callback is a
+    # FIXED path (no object_id) because Google requires an exact redirect_uri.
+    path(
+        "calendars/oauth/google/callback",
+        projects_views.CalendarConnectGoogleCallbackView.as_view(),
+        name="calendar-connect-google-callback",
+    ),
+    path(
+        "<str:object_id>/calendars/connect/google",
+        projects_views.ProjectCalendarConnectGoogleView.as_view(),
+        name="calendar-connect-google",
+    ),
     path(
         "<str:object_id>/calendars/<str:calendar_object_id>",
         projects_views.ProjectCalendarDetailView.as_view(),

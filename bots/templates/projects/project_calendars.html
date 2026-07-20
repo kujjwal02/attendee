@@ -53,8 +53,31 @@
 </style>
 
 <div class="container mt-4">
+    {% if messages %}
+    <div class="mb-3">
+        {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% elif message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Calendars</h2>
+        <div class="dropdown">
+            <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-calendar-plus me-1"></i> Connect Google Calendar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><h6 class="dropdown-header">Auto-record which meetings?</h6></li>
+                <li><a class="dropdown-item" href="{% url 'bots:calendar-connect-google' project.object_id %}?policy=participant">Meetings I'm part of <small class="text-muted">(default)</small></a></li>
+                <li><a class="dropdown-item" href="{% url 'bots:calendar-connect-google' project.object_id %}?policy=organizer">Only meetings I organize</a></li>
+                <li><a class="dropdown-item" href="{% url 'bots:calendar-connect-google' project.object_id %}?policy=accepted">Only meetings I've accepted</a></li>
+                <li><a class="dropdown-item" href="{% url 'bots:calendar-connect-google' project.object_id %}?policy=keyword&keyword=[rec]">Only titles containing [rec]</a></li>
+                <li><a class="dropdown-item" href="{% url 'bots:calendar-connect-google' project.object_id %}?policy=all">All events with a link</a></li>
+            </ul>
+        </div>
     </div>
     <!-- Filters Collapsible Panel -->
     {% if filter_params.start_date or filter_params.end_date or filter_params.states or filter_params.deduplication_key or calendars %}
