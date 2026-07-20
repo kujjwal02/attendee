@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 
 import stripe
@@ -12,7 +13,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models, transaction
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
-from django.http import HttpResponse, QueryDict
+from django.http import FileResponse, Http404, HttpResponse, QueryDict, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
@@ -991,6 +992,70 @@ class ProjectBotRecordingsView(LoginRequiredMixin, ProjectUrlContextMixin, View)
         }
 
         return render(request, "projects/partials/project_bot_recordings.html", context)
+
+
+class ProjectBotRecordingMediaView(LoginRequiredMixin, ProjectUrlContextMixin, View):
+    """Streams a recording's media file to authenticated users who can access the project.
+
+    Needed for the `filesystem` storage backend (self-hosted): unlike S3/Azure there is no
+    signed URL, so the browser <video> tag has nothing to load. This serves the file directly
+    from the recording storage (e.g. the rclone Drive mount) with HTTP Range support so the
+    player can stream and seek.
+    """
+
+    CHUNK_SIZE = 8192
+
+    def get(self, request, object_id, bot_object_id, recording_object_id):
+        project = get_project_for_user(user=request.user, project_object_id=object_id)
+
+        try:
+            bot = Bot.objects.get(object_id=bot_object_id, project=project)
+            recording = Recording.objects.get(object_id=recording_object_id, bot=bot)
+        except (Bot.DoesNotExist, Recording.DoesNotExist):
+            raise Http404("Recording not found")
+
+        if not recording.file.name:
+            raise Http404("Recording has no media file")
+
+        file_size = recording.file.size
+        content_type = "video/mp4"
+        range_header = request.headers.get("Range")
+
+        match = re.match(r"bytes=(\d+)-(\d*)", range_header) if range_header else None
+        if match:
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else file_size - 1
+            end = min(end, file_size - 1)
+            if start > end or start >= file_size:
+                response = HttpResponse(status=416)
+                response["Content-Range"] = f"bytes */{file_size}"
+                return response
+
+            length = end - start + 1
+            file_handle = recording.file.open("rb")
+            file_handle.seek(start)
+
+            def stream(handle=file_handle, remaining=length, chunk_size=self.CHUNK_SIZE):
+                try:
+                    while remaining > 0:
+                        data = handle.read(min(chunk_size, remaining))
+                        if not data:
+                            break
+                        remaining -= len(data)
+                        yield data
+                finally:
+                    handle.close()
+
+            response = StreamingHttpResponse(stream(), status=206, content_type=content_type)
+            response["Content-Length"] = str(length)
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+            response["Accept-Ranges"] = "bytes"
+            return response
+
+        response = FileResponse(recording.file.open("rb"), content_type=content_type)
+        response["Accept-Ranges"] = "bytes"
+        response["Content-Length"] = str(file_size)
+        return response
 
 
 class ProjectWebhooksView(LoginRequiredMixin, ProjectUrlContextMixin, View):

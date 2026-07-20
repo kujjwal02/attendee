@@ -2323,8 +2323,22 @@ class Recording(models.Model):
                 ExpiresIn=1800,
             )
 
-        # Any other backend (e.g. filesystem) has no boto3 bucket/client. Without a
-        # base_url configured, self.file.url raises ValueError -> return None.
+        if settings.STORAGE_PROTOCOL == "filesystem":
+            # No signed URL for the local/rclone filesystem backend — serve the file through an
+            # authenticated Django view (the browser <video> tag can't load a bare filesystem path).
+            from django.urls import reverse
+
+            return reverse(
+                "bots:project-bot-recording-media",
+                kwargs={
+                    "object_id": self.bot.project.object_id,
+                    "bot_object_id": self.bot.object_id,
+                    "recording_object_id": self.object_id,
+                },
+            )
+
+        # Any other backend has no boto3 bucket/client. Without a base_url configured,
+        # self.file.url raises ValueError -> return None.
         try:
             return self.file.url
         except ValueError:
