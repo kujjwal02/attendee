@@ -29,6 +29,7 @@ from .models import (
     ApiKey,
     Bot,
     BotEvent,
+    BotEventManager,
     BotEventSubTypes,
     BotEventTypes,
     BotLogin,
@@ -823,10 +824,42 @@ class ProjectCalendarDetailView(LoginRequiredMixin, ProjectUrlContextMixin, List
                 "CalendarPlatform": CalendarPlatform,
                 "webhook_delivery_attempts": webhook_delivery_attempts,
                 "WebhookDeliveryAttemptStatus": WebhookDeliveryAttemptStatus,
+                "calendar_events_data": self._calendar_events_data(calendar, project),
             }
         )
 
         return context
+
+    def _calendar_events_data(self, calendar, project):
+        """All (non-deleted) events as FullCalendar event objects, colored by bot status."""
+        # Bot status → (label, color). Green = a bot will record; grey = cancelled;
+        # blue = already recorded; cyan = has a link but no bot yet; light grey = no meeting.
+        events = []
+        for e in calendar.events.filter(is_deleted=False).prefetch_related("bots").order_by("start_time"):
+            states = [b.state for b in e.bots.all()]
+            if any(s in BotStates.pre_meeting_states() for s in states):
+                status, color = "Bot scheduled", "#198754"
+            elif any(s == BotStates.ENDED for s in states):
+                status, color = "Recorded", "#0d6efd"
+            elif any(s == BotStates.CANCELLED for s in states):
+                status, color = "Bot cancelled", "#6c757d"
+            elif states:
+                status, color = "Bot failed", "#dc3545"
+            elif e.meeting_url:
+                status, color = "No bot", "#0dcaf0"
+            else:
+                status, color = "No meeting link", "#adb5bd"
+            events.append(
+                {
+                    "title": e.name or "Untitled event",
+                    "start": e.start_time.isoformat(),
+                    "end": e.end_time.isoformat(),
+                    "url": reverse("bots:project-calendar-event-detail", args=[project.object_id, calendar.object_id, e.object_id]),
+                    "color": color,
+                    "extendedProps": {"status": status, "hasMeeting": bool(e.meeting_url)},
+                }
+            )
+        return events
 
 
 class ProjectCalendarEventDetailView(LoginRequiredMixin, ProjectUrlContextMixin, View):
@@ -1087,6 +1120,38 @@ class ProjectBotDetailView(LoginRequiredMixin, ProjectUrlContextMixin, View):
         )
 
         return render(request, "projects/project_bot_detail.html", context)
+
+
+class CancelBotView(LoginRequiredMixin, View):
+    """Cancel a scheduled/ready bot before it joins its meeting (self-hosted fork).
+
+    Moves the bot to the terminal CANCELLED state (kept, not deleted) so the scheduler
+    never launches it and auto-dispatch won't re-book the same calendar event.
+    """
+
+    def post(self, request, object_id, bot_object_id):
+        project = get_project_for_user(user=request.user, project_object_id=object_id)
+
+        try:
+            bot = Bot.objects.get(object_id=bot_object_id, project=project)
+        except Bot.DoesNotExist:
+            return redirect("bots:project-bots", object_id=object_id)
+
+        if bot.state not in BotStates.pre_meeting_states():
+            messages.warning(request, f"This bot can't be cancelled — it's already {BotStates.state_to_api_code(bot.state)}.")
+            return redirect("bots:project-bot-detail", object_id=object_id, bot_object_id=bot_object_id)
+
+        try:
+            BotEventManager.create_event(bot, BotEventTypes.BOT_CANCELLED)
+            messages.success(request, "Bot cancelled — it won't join that meeting.")
+        except Exception:
+            logger.exception(f"Failed to cancel bot {bot.object_id}")
+            messages.error(request, "Couldn't cancel the bot. Please try again.")
+
+        # Return to wherever the user clicked from (bots list or bot detail).
+        if "detail" in (request.META.get("HTTP_REFERER") or ""):
+            return redirect("bots:project-bot-detail", object_id=object_id, bot_object_id=bot_object_id)
+        return redirect("bots:project-bots", object_id=object_id)
 
 
 class ProjectBotRecordingsView(LoginRequiredMixin, ProjectUrlContextMixin, View):

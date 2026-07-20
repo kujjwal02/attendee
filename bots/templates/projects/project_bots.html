@@ -216,6 +216,16 @@
         </div>
     </div>
     {% endif %}
+    {% if messages %}
+    <div class="mb-3">
+        {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% elif message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     <div class="table-responsive" id="botsTable">
         {% if bots %}
             <table class="table">
@@ -230,6 +240,7 @@
                         <th>Last Event</th>
                         {% if has_scheduled_bots %}<th>Join At</th>{% endif %}
                         <th>Created</th>
+                        {% if session_type == SessionTypes.BOT %}<th></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -251,7 +262,7 @@
                             <td><span class="meeting-url" title="{{ bot.meeting_url }}">{{ bot.meeting_url }}</span></td>
                         {% endif %}
                         <td>
-                            <span class="badge {% if bot.state == BotStates.READY %}bg-warning{% elif bot.state == BotStates.FATAL_ERROR %}bg-danger{% elif bot.state == BotStates.ENDED %}bg-secondary{% else %}bg-success{% endif %}">
+                            <span class="badge {% if bot.state == BotStates.READY %}bg-warning{% elif bot.state == BotStates.FATAL_ERROR %}bg-danger{% elif bot.state == BotStates.ENDED %}bg-secondary{% elif bot.state == BotStates.CANCELLED %}bg-dark{% elif bot.state == BotStates.SCHEDULED %}bg-info{% else %}bg-success{% endif %}">
                                 {{ bot.get_state_display }}
                                 {% if bot.sub_state %}
                                     - {{ bot.get_sub_state_display }}
@@ -281,6 +292,18 @@
                         </td>
                         {% endif %}
                         <td><small>{{ bot.created_at|date:"M d, Y H:i" }}</small></td>
+                        {% if session_type == SessionTypes.BOT %}
+                        <td class="text-end">
+                            {% if bot.state == BotStates.SCHEDULED or bot.state == BotStates.READY or bot.state == BotStates.STAGED %}
+                            <form method="post" action="{% url 'bots:cancel-bot' project.object_id bot.object_id %}"
+                                  onclick="event.stopPropagation();"
+                                  onsubmit="return confirm('Cancel this bot? It won\'t join or record that meeting.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>

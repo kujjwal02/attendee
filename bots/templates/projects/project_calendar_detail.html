@@ -140,87 +140,16 @@
     <div class="tab-content">
         <!-- Calendar Events Tab -->
         <div class="tab-pane fade show active" id="events" role="tabpanel">
-            {% if calendar_events %}
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Event Name</th>
-                                <th>Start Time</th>
-                                <th>Meeting URL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for event in calendar_events %}
-                                <tr class="clickable-row"
-                                    hx-get="{% url 'bots:project-calendar-event-detail' project.object_id calendar.object_id event.object_id %}"
-                                    hx-select="#content"
-                                    hx-target="#content"
-                                    hx-swap="outerHTML"
-                                    hx-push-url="true">
-                                    <td>
-                                        {% if event.name %}
-                                            {{ event.name }}
-                                        {% else %}
-                                            <em class="text-muted">Untitled Event</em>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ event.start_time|date:"M d, Y H:i" }}</td>
-                                    <td>
-                                        {% if event.meeting_url %}
-                                            <a href="{{ event.meeting_url }}" target="_blank" class="text-decoration-none">
-                                                {{ event.meeting_url|truncatechars:50 }}
-                                                <i class="bi bi-box-arrow-up-right ms-1"></i>
-                                            </a>
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination -->
-                {% if is_paginated %}
-                    <nav aria-label="Events pagination">
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page=1">&laquo; First</a>
-                                </li>
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
-                                </li>
-                            {% endif %}
-
-                            {% for i in paginator.page_range %}
-                                {% if page_obj.number == i %}
-                                <li class="page-item active">
-                                    <span class="page-link">{{ i }}</span>
-                                </li>
-                                {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                                </li>
-                                {% endif %}
-                            {% endfor %}
-
-                            {% if page_obj.has_next %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
-                                </li>
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ paginator.num_pages }}">Last &raquo;</a>
-                                </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                {% endif %}
-            {% else %}
-                <div class="alert alert-info">No calendar events found for this calendar.</div>
-            {% endif %}
+            <div class="d-flex flex-wrap gap-3 mb-3 small align-items-center">
+                <span class="text-muted">Legend:</span>
+                <span><span class="d-inline-block rounded" style="width:12px;height:12px;background:#198754;"></span> Bot scheduled</span>
+                <span><span class="d-inline-block rounded" style="width:12px;height:12px;background:#0d6efd;"></span> Recorded</span>
+                <span><span class="d-inline-block rounded" style="width:12px;height:12px;background:#6c757d;"></span> Cancelled</span>
+                <span><span class="d-inline-block rounded" style="width:12px;height:12px;background:#0dcaf0;"></span> No bot</span>
+                <span><span class="d-inline-block rounded" style="width:12px;height:12px;background:#adb5bd;"></span> No meeting link</span>
+            </div>
+            <div id="calendar"></div>
+            {{ calendar_events_data|json_script:"calendar-events-data" }}
         </div>
 
         <!-- Webhooks Tab -->
@@ -315,4 +244,42 @@
         {% endif %}
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script>
+    (function () {
+        function initAttendeeCalendar() {
+            var el = document.getElementById("calendar");
+            if (!el) return;
+            // The FullCalendar CDN script may still be loading (esp. on an htmx swap) — poll for it.
+            if (typeof FullCalendar === "undefined") { return setTimeout(initAttendeeCalendar, 50); }
+            if (el.dataset.rendered) return;
+            el.dataset.rendered = "1";
+
+            var dataEl = document.getElementById("calendar-events-data");
+            var events = dataEl ? JSON.parse(dataEl.textContent) : [];
+
+            var calendar = new FullCalendar.Calendar(el, {
+                initialView: "dayGridMonth",
+                headerToolbar: {
+                    left: "prev,next today",
+                    center: "title",
+                    right: "dayGridMonth,timeGridWeek,listWeek",
+                },
+                height: "auto",
+                nowIndicator: true,
+                eventDisplay: "block",
+                events: events,
+                eventDidMount: function (info) {
+                    var status = info.event.extendedProps.status;
+                    if (status) {
+                        info.el.setAttribute("title", info.event.title + " — " + status);
+                    }
+                },
+            });
+            calendar.render();
+        }
+        initAttendeeCalendar();
+    })();
+</script>
 {% endblock %}

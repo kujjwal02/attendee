@@ -604,6 +604,10 @@ class BotStates(models.IntegerChoices):
     JOINING_BREAKOUT_ROOM = 14, "Joining Breakout Room"
     LEAVING_BREAKOUT_ROOM = 15, "Leaving Breakout Room"
     JOINED_RECORDING_PERMISSION_DENIED = 16, "Joined - Recording Permission Denied"
+    # Self-hosted fork: a scheduled/ready bot the user cancelled before it joined. Terminal,
+    # never launched, no charge, no fatal-error alert. Kept (not deleted) so auto-dispatch's
+    # "does this calendar event already have a bot?" check keeps skipping the meeting.
+    CANCELLED = 17, "Cancelled"
 
     # App session states
     CONNECTING = 100, "Connecting"
@@ -630,6 +634,7 @@ class BotStates(models.IntegerChoices):
             cls.JOINING_BREAKOUT_ROOM: "joining_breakout_room",
             cls.LEAVING_BREAKOUT_ROOM: "leaving_breakout_room",
             cls.JOINED_RECORDING_PERMISSION_DENIED: "joined_recording_permission_denied",
+            cls.CANCELLED: "cancelled",
             cls.CONNECTING: "connecting",
             cls.CONNECTED: "connected",
             cls.DISCONNECTING: "disconnecting",
@@ -648,7 +653,8 @@ class BotStates(models.IntegerChoices):
 
     @classmethod
     def post_meeting_states(cls):
-        return [cls.FATAL_ERROR, cls.ENDED, cls.DATA_DELETED]
+        # CANCELLED is terminal: excluded from concurrency counting and never re-launched.
+        return [cls.FATAL_ERROR, cls.ENDED, cls.DATA_DELETED, cls.CANCELLED]
 
     @classmethod
     def pre_meeting_states(cls):
@@ -1332,6 +1338,7 @@ class BotEventTypes(models.IntegerChoices):
     BOT_BEGAN_JOINING_BREAKOUT_ROOM = 17, "Bot began joining breakout room"
     BOT_BEGAN_LEAVING_BREAKOUT_ROOM = 18, "Bot began leaving breakout room"
     BOT_RECORDING_PERMISSION_DENIED = 19, "Bot recording permission denied"
+    BOT_CANCELLED = 20, "Bot Cancelled"  # user cancelled a scheduled/ready bot before it joined
 
     # App session events
     APP_SESSION_CONNECTION_REQUESTED = 100, "App Session Connection Requested"
@@ -1362,6 +1369,7 @@ class BotEventTypes(models.IntegerChoices):
             cls.BOT_BEGAN_JOINING_BREAKOUT_ROOM: "began_joining_breakout_room",
             cls.BOT_BEGAN_LEAVING_BREAKOUT_ROOM: "began_leaving_breakout_room",
             cls.BOT_RECORDING_PERMISSION_DENIED: "recording_permission_denied",
+            cls.BOT_CANCELLED: "bot_cancelled",
             cls.APP_SESSION_CONNECTION_REQUESTED: "app_session_connection_requested",
             cls.APP_SESSION_CONNECTED: "app_session_connected",
             cls.APP_SESSION_DISCONNECT_REQUESTED: "app_session_disconnect_requested",
@@ -1579,6 +1587,11 @@ class BotEventManager:
             "from": BotStates.SCHEDULED,
             "to": BotStates.STAGED,
         },
+        # Self-hosted fork: cancel a bot before it joins (from any pre-meeting state).
+        BotEventTypes.BOT_CANCELLED: {
+            "from": [BotStates.READY, BotStates.SCHEDULED, BotStates.STAGED],
+            "to": BotStates.CANCELLED,
+        },
         BotEventTypes.COULD_NOT_JOIN: {
             "from": [BotStates.JOINING, BotStates.WAITING_ROOM],
             "to": BotStates.FATAL_ERROR,
@@ -1775,7 +1788,7 @@ class BotEventManager:
 
     @classmethod
     def bot_event_type_should_incur_charges(cls, event_type: int):
-        if event_type == BotEventTypes.FATAL_ERROR:
+        if event_type in (BotEventTypes.FATAL_ERROR, BotEventTypes.BOT_CANCELLED):
             return False
         return True
 

@@ -161,10 +161,21 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         {% if bot.session_type == SessionTypes.BOT %}
             <h2 class="mb-0">Bot Details</h2>
-            <a href="{% url 'projects:project-bots' project.object_id %}" 
-            class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Bots
-            </a>
+            <div class="d-flex gap-2">
+                {% if bot.state == BotStates.SCHEDULED or bot.state == BotStates.READY or bot.state == BotStates.STAGED %}
+                <form method="post" action="{% url 'bots:cancel-bot' project.object_id bot.object_id %}"
+                      onsubmit="return confirm('Cancel this bot? It won\'t join or record that meeting.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger">
+                        <i class="bi bi-x-circle"></i> Cancel bot
+                    </button>
+                </form>
+                {% endif %}
+                <a href="{% url 'projects:project-bots' project.object_id %}"
+                class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Bots
+                </a>
+            </div>
         {% endif %}
         {% if bot.session_type == SessionTypes.APP_SESSION %}
             <h2 class="mb-0">App Session Details</h2>
