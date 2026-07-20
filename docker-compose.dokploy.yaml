@@ -81,6 +81,10 @@ services:
     # Serve the static files collectstatic wrote in the init service (WhiteNoise).
     volumes:
       - staticfiles:/attendee/staticfiles
+      # The dashboard streams recordings back to the browser (filesystem storage has no
+      # signed URL), so the web container must also see the rclone Drive mount. Same bind +
+      # SHARED propagation as the worker, otherwise the media view 404s on every recording.
+      - ${RECORDING_MOUNT:-/home/ubuntu/attendee-recordings}:/recordings:rshared
     # Dokploy attaches the domain/Traefik route to this service on port 8000.
     expose: ["8000"]
     restart: unless-stopped
