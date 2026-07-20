@@ -43,6 +43,8 @@ x-app-env: &app-env
   VAULT_NOTE_ENABLED: ${VAULT_NOTE_ENABLED:-false}
   VAULT_NOTE_DIR: /vault
   VAULT_NOTE_BASE_URL: ${VAULT_NOTE_BASE_URL:-}
+  # --- auto-dispatch: name for bots this deployment auto-books from the calendar ---
+  AUTO_DISPATCH_BOT_NAME: "${AUTO_DISPATCH_BOT_NAME:-Ujjwal's Notetaker}"
   # --- single-VM bot execution ---
   LAUNCH_BOT_METHOD: celery
   ENABLE_CHROME_SANDBOX: "false"
