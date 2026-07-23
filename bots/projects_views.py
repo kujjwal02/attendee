@@ -1605,6 +1605,14 @@ class CreateBotView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 "bot_name": request.POST.get("bot_name") or "Meeting Bot",
             }
 
+            # Default dashboard-created Google Meet bots to the authenticated (signed-in)
+            # account so they don't join anonymous, matching calendar auto-dispatch.
+            if settings.DEFAULT_GOOGLE_MEET_LOGIN_GROUP and "meet.google.com" in (data["meeting_url"] or ""):
+                data["google_meet_settings"] = {
+                    "use_login": True,
+                    "login_group_name": settings.DEFAULT_GOOGLE_MEET_LOGIN_GROUP,
+                }
+
             bot, error = create_bot(data=data, source=BotCreationSource.DASHBOARD, project=project)
             if error:
                 return HttpResponse(json.dumps(error), status=400)

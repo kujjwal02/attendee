@@ -45,6 +45,11 @@ x-app-env: &app-env
   VAULT_NOTE_BASE_URL: ${VAULT_NOTE_BASE_URL:-}
   # --- auto-dispatch: name for bots this deployment auto-books from the calendar ---
   AUTO_DISPATCH_BOT_NAME: "${AUTO_DISPATCH_BOT_NAME:-Ujjwal's Notetaker}"
+  # Google Meet Bot Login group used to sign calendar- and dashboard-created bots into
+  # an authenticated account (Cloud Identity notetaker@ujjwalk.dev) so they join
+  # non-anonymous instead of tripping the "not signed in with a Google Account" flag.
+  # Must match a group under Settings -> Bot Logins -> Google Meet. Empty = anonymous.
+  DEFAULT_GOOGLE_MEET_LOGIN_GROUP: ${DEFAULT_GOOGLE_MEET_LOGIN_GROUP:-notetaker}
   # --- single-VM bot execution ---
   LAUNCH_BOT_METHOD: celery
   ENABLE_CHROME_SANDBOX: "false"

@@ -349,6 +349,13 @@ AUTO_DISPATCH_KEYWORD = os.getenv("AUTO_DISPATCH_KEYWORD", "")
 # that may still move/cancel; they get booked once they enter the horizon).
 AUTO_DISPATCH_HORIZON_HOURS = int(os.getenv("AUTO_DISPATCH_HORIZON_HOURS", "48"))
 AUTO_DISPATCH_BOT_NAME = os.getenv("AUTO_DISPATCH_BOT_NAME", "Notetaker")
+# When set, Google Meet bots created without an explicit google_meet_settings
+# (calendar auto-dispatch and the dashboard "Create Bot" form) sign in via this
+# Bot Login group (Settings -> Bot Logins -> Google Meet) so they join as an
+# authenticated account instead of anonymous. Empty = join anonymous (the built-in
+# default). login_mode defaults to "always" in the serializer, so a set group
+# means always sign in.
+DEFAULT_GOOGLE_MEET_LOGIN_GROUP = os.getenv("DEFAULT_GOOGLE_MEET_LOGIN_GROUP", "")
 
 CHARGE_CREDITS_FOR_BOTS = os.getenv("CHARGE_CREDITS_FOR_BOTS", "false") == "true"
 

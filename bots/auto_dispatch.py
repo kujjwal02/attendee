@@ -156,6 +156,14 @@ def book_bots_for_calendar(calendar, now=None) -> int:
             "bot_name": settings.AUTO_DISPATCH_BOT_NAME,
             "deduplication_key": f"cal-{event.object_id}",
         }
+        # Sign the bot in (sheds the anonymous flag) when a login group is configured.
+        # Without this, calendar-dispatched bots always join anonymous regardless of
+        # the Google Cloud Identity / SAML setup.
+        if settings.DEFAULT_GOOGLE_MEET_LOGIN_GROUP:
+            data["google_meet_settings"] = {
+                "use_login": True,
+                "login_group_name": settings.DEFAULT_GOOGLE_MEET_LOGIN_GROUP,
+            }
         bot, error = create_bot(data, BotCreationSource.SCHEDULER, calendar.project)
         if error:
             logger.warning(f"Auto-dispatch: failed to book bot for event {event.object_id} ({event.name!r}): {error}")
