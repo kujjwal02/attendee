@@ -23,6 +23,13 @@ x-app-env: &app-env
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in Dokploy env}
   CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?set CREDENTIALS_ENCRYPTION_KEY (a Fernet key)}
   ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+  # Public host of THIS deployment. Must be our own domain, NOT the upstream
+  # default "app.attendee.dev": SITE_DOMAIN builds the bot SSO set-cookie URL and
+  # gates the post-login redirect-host check (google_meet_ui_methods), so a wrong
+  # value makes every signed-in Google Meet bot fail with
+  # COULD_NOT_JOIN_MEETING_BOT_LOGIN_ATTEMPT_FAILED. Also used for webhook/calendar
+  # callback URLs.
+  SITE_DOMAIN: ${SITE_DOMAIN:-attendee.ujjwalk.dev}
   DATABASE_URL: postgres://${POSTGRES_USER:-attendee}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-attendee}
   POSTGRES_SSL_REQUIRE: "false"
   DJANGO_SSL_REQUIRE: ${DJANGO_SSL_REQUIRE:-true}
