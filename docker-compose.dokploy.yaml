@@ -57,6 +57,12 @@ x-app-env: &app-env
   # non-anonymous instead of tripping the "not signed in with a Google Account" flag.
   # Must match a group under Settings -> Bot Logins -> Google Meet. Empty = anonymous.
   DEFAULT_GOOGLE_MEET_LOGIN_GROUP: ${DEFAULT_GOOGLE_MEET_LOGIN_GROUP:-notetaker}
+  # Skip the pre-join "audio elements present" check. Upstream treats 0 <audio>
+  # elements as a transient Google A/B test and retries the whole join (re-running
+  # login) indefinitely. On our arm64 Chromium build (vs upstream Chrome) the
+  # pre-join audio elements never appear, so signed-in bots loop forever at the
+  # "Join now" screen and never join. Bypassing lets the bot click Join.
+  VERIFY_EXPECTED_AUDIO_CONFIGURATION_FOR_GOOGLE_MEET_BOT: ${VERIFY_EXPECTED_AUDIO_CONFIGURATION_FOR_GOOGLE_MEET_BOT:-false}
   # --- single-VM bot execution ---
   LAUNCH_BOT_METHOD: celery
   ENABLE_CHROME_SANDBOX: "false"
