@@ -1611,6 +1611,9 @@ class CreateBotView(LoginRequiredMixin, ProjectUrlContextMixin, View):
                 data["google_meet_settings"] = {
                     "use_login": True,
                     "login_group_name": settings.DEFAULT_GOOGLE_MEET_LOGIN_GROUP,
+                    # Force humanized (not the "robotic" default use_login would apply),
+                    # else Google Meet flags the bot under "Appears to be a bot".
+                    "ui_interaction_mode": "humanized",
                 }
 
             bot, error = create_bot(data=data, source=BotCreationSource.DASHBOARD, project=project)

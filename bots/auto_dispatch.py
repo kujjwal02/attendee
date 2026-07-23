@@ -163,6 +163,11 @@ def book_bots_for_calendar(calendar, now=None) -> int:
             data["google_meet_settings"] = {
                 "use_login": True,
                 "login_group_name": settings.DEFAULT_GOOGLE_MEET_LOGIN_GROUP,
+                # Force humanized interaction. use_login otherwise defaults this to
+                # "robotic", whose programmatic clicks trip Google Meet's "Appears to
+                # be a bot" risk flag. Humanized (mocap mouse) joins like the anonymous
+                # bot did, so the tile is a normal signed-in participant.
+                "ui_interaction_mode": "humanized",
             }
         bot, error = create_bot(data, BotCreationSource.SCHEDULER, calendar.project)
         if error:
